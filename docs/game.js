@@ -469,46 +469,67 @@ function maybeEndGame() {
   return false;
 }
 
+function handBackTurn(message) {
+  if (state.gameOver) {
+    return;
+  }
+  state.playerTurn = true;
+  state.lockInput = false;
+  setStatus(message);
+  render();
+}
+
 function resolveAiShot() {
   if (state.gameOver) {
     return;
   }
 
-  const target = chooseAiTarget();
-  if (!target) {
-    return;
+  try {
+    let target = null;
+    let result = null;
+
+    for (let attempt = 0; attempt < BOARD_SIZE * BOARD_SIZE; attempt += 1) {
+      target = chooseAiTarget();
+      if (!target) {
+        break;
+      }
+      result = fire(state.playerBoard, target.x, target.y);
+      if (result.ok) {
+        break;
+      }
+    }
+
+    if (!target || !result || !result.ok) {
+      handBackTurn("Enemy move failed to resolve. Your turn.");
+      return;
+    }
+
+    if (result.type === "hit") {
+      enqueueTargets(state.playerBoard, adjacentCoords(target.x, target.y));
+    }
+
+    if (result.type === "sunk") {
+      pruneQueue(state.playerBoard);
+    }
+
+    flashCoords(dom.playerButtons, result.coords);
+    render();
+
+    if (maybeEndGame()) {
+      return;
+    }
+
+    const suffix =
+      result.type === "sunk"
+        ? ` and sunk your ${result.shipName}.`
+        : result.type === "hit"
+          ? " and scored a hit."
+          : " and missed.";
+    handBackTurn(`Enemy fired at ${coordToHuman(target)}${suffix} Your turn.`);
+  } catch (error) {
+    console.error("AI turn failed:", error);
+    handBackTurn("Enemy move encountered an error. Your turn.");
   }
-
-  const result = fire(state.playerBoard, target.x, target.y);
-  if (!result.ok) {
-    window.setTimeout(resolveAiShot, 0);
-    return;
-  }
-
-  if (result.type === "hit") {
-    enqueueTargets(state.playerBoard, adjacentCoords(target.x, target.y));
-  }
-
-  if (result.type === "sunk") {
-    pruneQueue(state.playerBoard);
-  }
-
-  flashCoords(dom.playerButtons, result.coords);
-  render();
-
-  if (maybeEndGame()) {
-    return;
-  }
-
-  state.playerTurn = true;
-  state.lockInput = false;
-  const suffix =
-    result.type === "sunk"
-      ? ` and sunk your ${result.shipName}.`
-      : result.type === "hit"
-        ? " and scored a hit."
-        : " and missed.";
-  setStatus(`Enemy fired at ${coordToHuman(target)}${suffix} Your turn.`);
 }
 
 function onEnemyCellClick(event) {

@@ -36,14 +36,21 @@
           </select>
         </label>
         <button id="new-game" type="button">New Game</button>
+        <button id="rotate-ship" type="button">Rotate: Horizontal</button>
+        <button id="auto-place" type="button">Auto Place</button>
+        <button id="undo-place" type="button">Undo</button>
+        <button id="clear-place" type="button">Clear</button>
+        <button id="start-battle" type="button" disabled>Start Battle</button>
       </section>
 
+      <p id="placement-hint" class="placement-hint" aria-live="polite"></p>
       <p id="status" class="status" aria-live="polite"></p>
+      <div id="announce" class="announce" aria-live="assertive"></div>
 
       <section class="boards" aria-label="Game boards">
         <article class="panel">
           <h2>Your Fleet</h2>
-          <p>Ships are auto-deployed each game.</p>
+          <p>Place your ships by clicking squares on your board.</p>
           <div id="player-board" class="grid" aria-label="Your board"></div>
         </article>
 
