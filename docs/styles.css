@@ -132,10 +132,78 @@ button:hover {
   transform: translateY(-1px);
 }
 
+.controls button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+  opacity: 0.7;
+  transform: none;
+}
+
+#rotate-ship,
+#auto-place,
+#undo-place,
+#clear-place {
+  background: linear-gradient(145deg, #226d98, #2a9d8f);
+}
+
+#start-battle {
+  background: linear-gradient(145deg, #ef8354, #f4a261);
+}
+
+.placement-hint {
+  margin: 0.85rem 0 0;
+  min-height: 1.2rem;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
 .status {
-  margin: 1rem 0 0;
+  margin: 0.55rem 0 0;
   min-height: 1.3rem;
   font-weight: 600;
+}
+
+.announce {
+  position: fixed;
+  left: 50%;
+  top: 1rem;
+  transform: translateX(-50%) scale(0.82);
+  background: #0f3a56;
+  color: #fff;
+  padding: 0.6rem 1rem;
+  border-radius: 12px;
+  font-family: "Changa", sans-serif;
+  font-size: 1.05rem;
+  letter-spacing: 0.03em;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 30;
+  box-shadow: 0 18px 50px #0e365c33;
+}
+
+.announce.show {
+  animation: callout 1200ms ease;
+}
+
+.announce.hit {
+  background: linear-gradient(145deg, #ca2f3f, #e63946);
+}
+
+.announce.sunk {
+  background: linear-gradient(145deg, #f58f0e, #ffb703);
+}
+
+.announce.win {
+  background: linear-gradient(145deg, #137d58, #2a9d8f);
+}
+
+.announce.lose {
+  background: linear-gradient(145deg, #505563, #6c757d);
+}
+
+.announce.info {
+  background: linear-gradient(145deg, #1f5f8b, #0077b6);
 }
 
 .boards {
@@ -277,6 +345,25 @@ button:hover {
   }
 }
 
+@keyframes callout {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px) scale(0.88);
+  }
+  16% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1.03);
+  }
+  80% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-5px) scale(0.92);
+  }
+}
+
 @media (max-width: 760px) {
   .app {
     padding: 1.2rem 0.85rem 2rem;
@@ -284,5 +371,11 @@ button:hover {
 
   .panel {
     padding: 0.85rem;
+  }
+
+  .announce {
+    max-width: calc(100vw - 1.5rem);
+    text-align: center;
+    font-size: 0.95rem;
   }
 }

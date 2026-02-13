@@ -16,8 +16,15 @@ const DIFF_LABEL = {
 
 const dom = {
   status: document.getElementById("status"),
+  announce: document.getElementById("announce"),
+  placementHint: document.getElementById("placement-hint"),
   newGame: document.getElementById("new-game"),
   difficulty: document.getElementById("difficulty"),
+  rotateShip: document.getElementById("rotate-ship"),
+  autoPlace: document.getElementById("auto-place"),
+  undoPlace: document.getElementById("undo-place"),
+  clearPlace: document.getElementById("clear-place"),
+  startBattle: document.getElementById("start-battle"),
   playerBoard: document.getElementById("player-board"),
   enemyBoard: document.getElementById("enemy-board"),
   playerButtons: [],
@@ -26,13 +33,32 @@ const dom = {
 
 const state = {
   difficulty: dom.difficulty.value,
+  phase: "placement",
   playerBoard: null,
   enemyBoard: null,
-  playerTurn: true,
+  playerTurn: false,
   lockInput: false,
   gameOver: false,
-  aiMemory: { queue: [] }
+  aiMemory: { queue: [] },
+  orientationHorizontal: true,
+  placementQueue: [],
+  playerPlacements: [],
+  announceTimer: null
 };
+
+function createPlacementQueue() {
+  const queue = [];
+  for (const spec of FLEET) {
+    for (let i = 1; i <= spec.count; i += 1) {
+      queue.push({
+        name: spec.name,
+        label: spec.count > 1 ? `${spec.name} ${i}` : spec.name,
+        length: spec.length
+      });
+    }
+  }
+  return queue;
+}
 
 function createCell() {
   return {
@@ -86,11 +112,12 @@ function canPlaceShip(board, cells) {
   return true;
 }
 
-function placeShip(board, name, length, cells) {
+function placeShip(board, label, length, cells, baseName = label) {
   const shipId = board.ships.length;
   board.ships.push({
     id: shipId,
-    name,
+    name: label,
+    baseName,
     length,
     cells,
     hits: 0,
@@ -103,9 +130,10 @@ function placeShip(board, name, length, cells) {
 
 function placeFleetRandom(board) {
   for (const spec of FLEET) {
-    for (let i = 0; i < spec.count; i += 1) {
+    for (let i = 1; i <= spec.count; i += 1) {
       let placed = false;
       let tries = 0;
+      const label = spec.count > 1 ? `${spec.name} ${i}` : spec.name;
       while (!placed && tries < 500) {
         tries += 1;
         const horizontal = Math.random() < 0.5;
@@ -115,7 +143,7 @@ function placeFleetRandom(board) {
         const y = Math.floor(Math.random() * (maxY + 1));
         const cells = shipCells(x, y, spec.length, horizontal);
         if (canPlaceShip(board, cells)) {
-          placeShip(board, spec.name, spec.length, cells);
+          placeShip(board, label, spec.length, cells, spec.name);
           placed = true;
         }
       }
@@ -124,6 +152,20 @@ function placeFleetRandom(board) {
       }
     }
   }
+}
+
+function boardFromPlacements(placements) {
+  const board = createBoard();
+  for (const placement of placements) {
+    placeShip(
+      board,
+      placement.label,
+      placement.length,
+      placement.cells,
+      placement.name
+    );
+  }
+  return board;
 }
 
 function fire(board, x, y) {
@@ -158,7 +200,7 @@ function fire(board, x, y) {
       ok: true,
       type: "sunk",
       coords: [...ship.cells],
-      shipName: ship.name
+      shipName: ship.baseName
     };
   }
 
@@ -166,7 +208,7 @@ function fire(board, x, y) {
     ok: true,
     type: "hit",
     coords: [{ x, y }],
-    shipName: ship.name
+    shipName: ship.baseName
   };
 }
 
@@ -190,11 +232,7 @@ function buildGrid(container, onClick) {
       btn.dataset.x = String(x);
       btn.dataset.y = String(y);
       btn.setAttribute("aria-label", `Row ${y + 1} Column ${x + 1}`);
-      if (onClick) {
-        btn.addEventListener("click", onClick);
-      } else {
-        btn.disabled = true;
-      }
+      btn.addEventListener("click", onClick);
       container.appendChild(btn);
       buttons.push(btn);
     }
@@ -246,6 +284,66 @@ function flashCoords(buttons, coords) {
 
 function setStatus(text) {
   dom.status.textContent = text;
+}
+
+function setPlacementHint(text) {
+  dom.placementHint.textContent = text;
+}
+
+function showAnnouncement(kind, text) {
+  if (!dom.announce) {
+    return;
+  }
+
+  dom.announce.className = `announce ${kind}`;
+  dom.announce.textContent = text;
+
+  void dom.announce.offsetWidth;
+  dom.announce.classList.add("show");
+
+  if (state.announceTimer) {
+    window.clearTimeout(state.announceTimer);
+  }
+
+  state.announceTimer = window.setTimeout(() => {
+    dom.announce.classList.remove("show");
+  }, 1150);
+}
+
+function getNextPlacementSpec() {
+  return state.placementQueue[state.playerPlacements.length] || null;
+}
+
+function placementComplete() {
+  return state.playerPlacements.length === state.placementQueue.length;
+}
+
+function syncPlacementUi() {
+  const inPlacement = state.phase === "placement" && !state.gameOver;
+  const complete = placementComplete();
+
+  dom.rotateShip.disabled = !inPlacement;
+  dom.autoPlace.disabled = !inPlacement;
+  dom.undoPlace.disabled = !inPlacement || state.playerPlacements.length === 0;
+  dom.clearPlace.disabled = !inPlacement || state.playerPlacements.length === 0;
+  dom.startBattle.disabled = !inPlacement || !complete;
+
+  dom.rotateShip.textContent = `Rotate: ${state.orientationHorizontal ? "Horizontal" : "Vertical"}`;
+
+  if (inPlacement) {
+    const next = getNextPlacementSpec();
+    if (next) {
+      setPlacementHint(
+        `Next ship: ${next.label} (${next.length} cells). Click your board to place.`
+      );
+    } else {
+      setPlacementHint("Fleet ready. Press Start Battle.");
+    }
+  } else if (state.phase === "battle") {
+    setPlacementHint("Battle mode active. Fire on enemy waters.");
+  } else {
+    setPlacementHint("Match complete. Start a new game to place a new fleet.");
+  }
 }
 
 function getUnshotCoords(board) {
@@ -419,50 +517,64 @@ function chooseAiTarget() {
 }
 
 function render() {
+  const inPlacement = state.phase === "placement";
+  const inBattle = state.phase === "battle";
+
   paintBoard(state.playerBoard, dom.playerButtons, {
     showShips: true,
-    allowClicks: false
+    allowClicks: inPlacement && !state.gameOver
   });
 
   paintBoard(state.enemyBoard, dom.enemyButtons, {
     showShips: false,
-    allowClicks: state.playerTurn && !state.gameOver && !state.lockInput
+    allowClicks:
+      inBattle && state.playerTurn && !state.gameOver && !state.lockInput
   });
 }
 
-function startGame() {
+function beginPlacementPhase() {
+  state.phase = "placement";
+  state.gameOver = false;
+  state.playerTurn = false;
+  state.lockInput = false;
+  state.aiMemory = { queue: [] };
+  state.orientationHorizontal = true;
+  state.placementQueue = createPlacementQueue();
+  state.playerPlacements = [];
+
   state.playerBoard = createBoard();
   state.enemyBoard = createBoard();
-  state.playerTurn = true;
-  state.lockInput = false;
-  state.gameOver = false;
-  state.aiMemory = { queue: [] };
-
-  placeFleetRandom(state.playerBoard);
   placeFleetRandom(state.enemyBoard);
 
   render();
+  syncPlacementUi();
   setStatus(
-    `Battle started. Difficulty: ${DIFF_LABEL[state.difficulty]}. Fire on enemy waters.`
+    "Placement phase: click your board to place ships, then start the battle."
   );
 }
 
 function maybeEndGame() {
   if (allShipsSunk(state.enemyBoard)) {
     state.gameOver = true;
+    state.phase = "gameover";
     state.lockInput = false;
     state.playerTurn = false;
-    setStatus("You won the battle. Press New Game to play again.");
+    setStatus("Victory. You destroyed the enemy fleet.");
+    showAnnouncement("win", "Victory!");
     render();
+    syncPlacementUi();
     return true;
   }
 
   if (allShipsSunk(state.playerBoard)) {
     state.gameOver = true;
+    state.phase = "gameover";
     state.lockInput = false;
     state.playerTurn = false;
-    setStatus(`Enemy won on ${DIFF_LABEL[state.difficulty]} mode. Press New Game.`);
+    setStatus(`Defeat on ${DIFF_LABEL[state.difficulty]} mode. Start a new game.`);
+    showAnnouncement("lose", "Fleet Lost");
     render();
+    syncPlacementUi();
     return true;
   }
 
@@ -470,7 +582,7 @@ function maybeEndGame() {
 }
 
 function handBackTurn(message) {
-  if (state.gameOver) {
+  if (state.gameOver || state.phase !== "battle") {
     return;
   }
   state.playerTurn = true;
@@ -480,7 +592,7 @@ function handBackTurn(message) {
 }
 
 function resolveAiShot() {
-  if (state.gameOver) {
+  if (state.gameOver || state.phase !== "battle") {
     return;
   }
 
@@ -506,10 +618,12 @@ function resolveAiShot() {
 
     if (result.type === "hit") {
       enqueueTargets(state.playerBoard, adjacentCoords(target.x, target.y));
+      showAnnouncement("hit", "Incoming Hit");
     }
 
     if (result.type === "sunk") {
       pruneQueue(state.playerBoard);
+      showAnnouncement("sunk", `Your ${result.shipName} was sunk`);
     }
 
     flashCoords(dom.playerButtons, result.coords);
@@ -532,7 +646,154 @@ function resolveAiShot() {
   }
 }
 
+function tryPlaceCurrentShip(x, y) {
+  const nextSpec = getNextPlacementSpec();
+  if (!nextSpec) {
+    setStatus("All ships placed. Press Start Battle.");
+    return;
+  }
+
+  const cells = shipCells(
+    x,
+    y,
+    nextSpec.length,
+    state.orientationHorizontal
+  );
+
+  if (!canPlaceShip(state.playerBoard, cells)) {
+    setStatus("Invalid placement. Move ship or rotate and try again.");
+    return;
+  }
+
+  state.playerPlacements.push({
+    name: nextSpec.name,
+    label: nextSpec.label,
+    length: nextSpec.length,
+    cells
+  });
+
+  state.playerBoard = boardFromPlacements(state.playerPlacements);
+  render();
+  syncPlacementUi();
+
+  if (placementComplete()) {
+    setStatus("Fleet deployed. Press Start Battle.");
+    showAnnouncement("info", "Fleet Ready");
+  } else {
+    setStatus(`Placed ${nextSpec.label}.`);
+  }
+}
+
+function autoPlaceRemaining() {
+  if (state.phase !== "placement" || state.gameOver) {
+    return;
+  }
+
+  const placements = [...state.playerPlacements];
+  const board = boardFromPlacements(placements);
+
+  for (let i = placements.length; i < state.placementQueue.length; i += 1) {
+    const spec = state.placementQueue[i];
+    let placed = false;
+
+    for (let tries = 0; tries < 500 && !placed; tries += 1) {
+      const horizontal = Math.random() < 0.5;
+      const maxX = horizontal ? BOARD_SIZE - spec.length : BOARD_SIZE - 1;
+      const maxY = horizontal ? BOARD_SIZE - 1 : BOARD_SIZE - spec.length;
+      const x = Math.floor(Math.random() * (maxX + 1));
+      const y = Math.floor(Math.random() * (maxY + 1));
+      const cells = shipCells(x, y, spec.length, horizontal);
+
+      if (canPlaceShip(board, cells)) {
+        placeShip(board, spec.label, spec.length, cells, spec.name);
+        placements.push({
+          name: spec.name,
+          label: spec.label,
+          length: spec.length,
+          cells
+        });
+        placed = true;
+      }
+    }
+
+    if (!placed) {
+      setStatus("Auto-place failed. Try again or clear and retry.");
+      return;
+    }
+  }
+
+  state.playerPlacements = placements;
+  state.playerBoard = board;
+  render();
+  syncPlacementUi();
+  setStatus("Fleet auto-deployed. Press Start Battle.");
+  showAnnouncement("info", "Auto Deploy");
+}
+
+function undoPlacement() {
+  if (state.phase !== "placement" || state.playerPlacements.length === 0) {
+    return;
+  }
+
+  const removed = state.playerPlacements.pop();
+  state.playerBoard = boardFromPlacements(state.playerPlacements);
+  render();
+  syncPlacementUi();
+  setStatus(`Removed ${removed.label}. Place it again.`);
+}
+
+function clearPlacements() {
+  if (state.phase !== "placement") {
+    return;
+  }
+
+  state.playerPlacements = [];
+  state.playerBoard = createBoard();
+  render();
+  syncPlacementUi();
+  setStatus("Cleared your board. Place your fleet again.");
+}
+
+function startBattle() {
+  if (state.phase !== "placement") {
+    return;
+  }
+
+  if (!placementComplete()) {
+    setStatus("Place all ships before starting battle.");
+    return;
+  }
+
+  state.phase = "battle";
+  state.playerTurn = true;
+  state.lockInput = false;
+  state.gameOver = false;
+  state.aiMemory = { queue: [] };
+
+  render();
+  syncPlacementUi();
+  setStatus(
+    `Battle started. Difficulty: ${DIFF_LABEL[state.difficulty]}. Fire on enemy waters.`
+  );
+  showAnnouncement("info", "Battle Start");
+}
+
+function onPlayerCellClick(event) {
+  if (state.phase !== "placement" || state.gameOver) {
+    return;
+  }
+
+  const x = Number(event.currentTarget.dataset.x);
+  const y = Number(event.currentTarget.dataset.y);
+  tryPlaceCurrentShip(x, y);
+}
+
 function onEnemyCellClick(event) {
+  if (state.phase !== "battle") {
+    setStatus("Finish placement first, then start battle.");
+    return;
+  }
+
   if (!state.playerTurn || state.lockInput || state.gameOver) {
     return;
   }
@@ -544,6 +805,12 @@ function onEnemyCellClick(event) {
   if (!result.ok) {
     setStatus("That coordinate has already been fired on.");
     return;
+  }
+
+  if (result.type === "hit") {
+    showAnnouncement("hit", "Direct Hit");
+  } else if (result.type === "sunk") {
+    showAnnouncement("sunk", `Enemy ${result.shipName} sunk`);
   }
 
   flashCoords(dom.enemyButtons, result.coords);
@@ -563,27 +830,41 @@ function onEnemyCellClick(event) {
   state.playerTurn = false;
   state.lockInput = true;
   setStatus(`${playerLine} Enemy is thinking...`);
-  window.setTimeout(resolveAiShot, 550);
+  render();
+  window.setTimeout(resolveAiShot, 600);
 }
 
 function bindUI() {
-  dom.playerButtons = buildGrid(dom.playerBoard, null);
+  dom.playerButtons = buildGrid(dom.playerBoard, onPlayerCellClick);
   dom.enemyButtons = buildGrid(dom.enemyBoard, onEnemyCellClick);
 
   dom.newGame.addEventListener("click", () => {
     state.difficulty = dom.difficulty.value;
-    startGame();
+    beginPlacementPhase();
   });
+
+  dom.rotateShip.addEventListener("click", () => {
+    if (state.phase !== "placement") {
+      return;
+    }
+    state.orientationHorizontal = !state.orientationHorizontal;
+    syncPlacementUi();
+  });
+
+  dom.autoPlace.addEventListener("click", autoPlaceRemaining);
+  dom.undoPlace.addEventListener("click", undoPlacement);
+  dom.clearPlace.addEventListener("click", clearPlacements);
+  dom.startBattle.addEventListener("click", startBattle);
 
   dom.difficulty.addEventListener("change", () => {
     state.difficulty = dom.difficulty.value;
-    if (!state.gameOver) {
-      setStatus(
-        `Difficulty set to ${DIFF_LABEL[state.difficulty]}. It is active immediately.`
-      );
+    if (state.phase === "battle") {
+      setStatus(`Difficulty switched to ${DIFF_LABEL[state.difficulty]} for AI turns.`);
+    } else if (state.phase === "placement") {
+      setStatus(`Difficulty set to ${DIFF_LABEL[state.difficulty]}.`);
     }
   });
 }
 
 bindUI();
-startGame();
+beginPlacementPhase();

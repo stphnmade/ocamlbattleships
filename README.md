@@ -50,6 +50,16 @@ includes a browser edition at:
 
 The workflow publishes the `docs/` directory as a static site.
 
+### Web gameplay flow
+
+1. Place ships on `Your Fleet` board by clicking cells.
+2. Use `Rotate`, `Auto Place`, `Undo`, or `Clear` while placing.
+3. Click `Start Battle` once all ships are placed.
+4. Fire on `Enemy Waters`.
+
+The web UI includes animated event announcements for major events (`Hit`,
+`Sunk`, and match result).
+
 ### Local web preview
 
 From the repo root:
